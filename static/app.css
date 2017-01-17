@@ -1,0 +1,71 @@
+body {
+  xpadding-top:60px;
+}
+
+/*
+.notifications .notification .unseen {
+  background:#fcc;
+}
+
+.notifications .notification .seen {
+  background:#cfc; 
+}
+*/
+
+.field {
+  clear:both;
+}
+
+
+.card-image .icon {
+  display:block;
+  margin:5px;
+}
+
+h1 {
+  font-size:140%;
+}
+
+h2 {
+  font-size:130%;
+}
+
+.oi:before {
+  margin-right:3px;
+}
+
+.status-messages .info {
+  background:#cfc;
+}
+
+.status-messages .warn {
+  background:#FFBC00;
+}
+
+.status-messages .error {
+  background:#fcc;
+}
+
+@media (max-width:1024px) {
+  .pux-devtool {
+    display:none;
+  }
+  .pux-devtool-app-container {
+    margin-right:0px !important;
+  }
+}
+
+
+@media (max-width:600px) {
+  .navbar .list-inline {
+    padding-right:40px;
+  }
+  .navbar .list-inline .text {
+    display:none;
+  }
+
+  .navbar .text {
+    display:none;
+  }  
+
+}

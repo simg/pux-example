@@ -1,0 +1,10 @@
+node_modules/
+bower_components/
+output/
+dist/
+static/dist
+start_server
+test_queries
+.psci_modules
+npm-debug.log
+**DS_Store

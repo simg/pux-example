@@ -1,0 +1,97 @@
+module App.Models.Profile where
+
+import Foundation
+
+import Data.Argonaut.Encode 
+import Data.List.NonEmpty as NEL
+import Data.String as Str
+
+
+
+import App.Models.Common
+import App.Utils
+
+
+data ProfileFull = ProfileFull {
+  uuid  :: UUID
+, name  :: String
+, email :: Maybe String
+, icon  :: Maybe String
+}
+derive instance genericProfileFull :: Generic ProfileFull
+instance eqUser :: Eq ProfileFull where eq = gEq
+
+instance asForeignProfileFull :: AsForeign ProfileFull where
+  write x = toForeignGeneric defaultOptions x -- { unwrapSingleConstructors = true }) x
+
+
+instance isForeignProfileFull :: IsForeign ProfileFull where
+  read val = do
+    uuid  <- parseJsonUUID =<< readString =<< readProp "uuid" val
+    name  <- readString =<< readProp "name"  val
+    email <- readString =<< readProp "email" val
+    icon  <- readString =<< readProp "icon"  val
+    pure $ ProfileFull { uuid: uuid, name:name, email:Just email, icon:Just icon }
+    where
+      parseJsonUUID u = exceptNoteA ((Identity <<< parseUUID) u) $ NEL.singleton $ JSONError "invalid uuid"
+
+data ProfileFilterOptions = ProfileFilterOptions {
+  uuid :: Maybe UUID
+, name :: Maybe String
+}
+
+instance encodeProfileFilterOptions :: EncodeJson ProfileFilterOptions where
+  encodeJson (ProfileFilterOptions o) 
+    =   "uuid"    := o.uuid
+    ~>~ "name"    := o.name
+    ~>~  jsonEmptyObject
+
+-------------------------------------------------------------------------------------------------------
+-- | API
+-------------------------------------------------------------------------------------------------------
+
+-- TODO: find a way to plumb this in properly
+{-
+saveUser :: forall e. User -> Aff (ajax :: AJAX, console :: CONSOLE | e) (Either String User)
+saveUser (User user) = do
+  res <- apiCall method baseUrl endPoint (Just devjwt) $ Just <<< show $ encodeJson (User user)
+  liftEff $ log $ "save user"
+  pure $ case Str.length res.response of 
+           0 -> Right (User user) -- TODO: possibly get an updated user from the api
+           _ -> Left "Kind of Success"
+  where 
+    endPoint = case user.id_ of 
+                 Just uid -> "users?id=eq." <> uid
+                 Nothing  -> "users"
+    method  = case user.id_ of
+                 Just _ -> PATCH
+                 Nothing -> POST 
+-}
+
+{-
+fetchProfileFull :: UUID -> Aff (ajax :: AJAX, console :: CONSOLE | e) (Either String ProfileFull)
+fetchProfileFull uuid = do
+  case fetchProfileFullList ProfileFilterOptions { uuid: uuid, name:Nothing } of
+    Left ex -> pure $ Left ex
+    Right (pf:pfs) -> pure $ Right pf
+-}
+
+
+fetchProfileFullList :: forall e. ProfileFilterOptions -> Aff (ajax :: AJAX, console :: CONSOLE | e) (Either String (Array ProfileFull))
+fetchProfileFullList (ProfileFilterOptions o) = do
+  --res <- apiGet baseUrl "users" Nothing Nothing --(Just <<< show $ encodeJson o)
+  res <- apiCall GET baseUrl "profiles" (Just devjwt) Nothing
+  case runExcept ( readJSON res.response :: F (Array ProfileFull) ) of
+    Left err -> do
+      liftEff $ log $ "invalid profile list" <> res.response <> " : " <> show err
+      pure $ Left $ "invalid profile list" <> res.response <> " : " <> show err
+    Right users -> do
+      liftEff $ log $ "valid profile list"                 
+      pure $ Right users
+  
+
+
+
+
+  
+  

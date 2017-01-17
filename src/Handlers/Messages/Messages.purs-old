@@ -1,0 +1,219 @@
+module Handlers.Messages where
+
+
+import Foundation
+
+import Data.Argonaut
+import Data.Argonaut.Encode
+import Data.Array
+import Data.Array as Array
+--import Data.Foldable
+--import Data.Generic
+import Data.Int
+--import Data.Maybe
+import Data.String hiding (length) -- TODO:
+import Data.String as String
+import Data.StrMap (StrMap)
+import Data.StrMap as StrMap
+import Data.Tuple
+
+--import Network.HTTP.Affjax (AJAX(), get, post)
+--import Network.HTTP.Affjax as A
+
+--import Prelude (($), (+), (-), (<>), (==), const, show, map, bind, pure, unit)
+import Pux (EffModel, noEffects)
+import Pux.Html (Html, form, div, p, ul, li, h1, h2, span, button, text, input, textarea, select, option, label)
+import Pux.Html.Attributes (className, type_, data_, style, value, maxLength, action, method, aria)
+import Pux.Html.Attributes (label, title) as A
+import Pux.Html.Events (FormEvent, onClick, onInput, onChange)
+import Pux.Router (link)
+
+import Debug.Trace
+
+data Action = SendMessage
+            | UpdateTextArea FormEvent
+            | UpdateRecipient Int FormEvent
+            | RemoveRecipient Int
+            | Nop
+
+data Message = Message {
+  sender :: Int
+, recipient :: Int
+, message :: String
+, status :: MessageStatus
+}
+derive instance genericMessage :: Generic Message
+{-instance encodeJsonMessage :: EncodeJson Message
+  where encodeJson = gEncodeJson-}
+
+instance encodeJsonMessage :: EncodeJson Message where
+  encodeJson (Message m) 
+    =  "sender" := m.sender
+    ~> "recipient" := m.recipient
+    ~> "message" := m.message
+    ~> jsonEmptyObject
+
+data MessageStatus = UnSeen | Seen | UnRead | Read
+derive instance messageStatus :: Generic MessageStatus
+derive instance eqMessageStatus :: Eq MessageStatus
+
+instance messageStatusIsForeign :: IsForeign MessageStatus where
+  read val = do
+    status <- readString val
+    pure $ case status of 
+      "unseen" -> UnSeen
+      "seen" -> Seen
+      "unread" -> UnRead
+      "read" -> Read
+      _ -> UnSeen --TODO: something better, but this OK for now
+
+
+type State = {
+  messages :: Array Message
+, recipients :: Array Int  
+, newMessage :: String
+} 
+--derive instance genericState :: Generic State
+
+init :: State
+init = { messages: [], recipients:[], newMessage: "" }
+
+messages_ :: Array Message
+messages_ = [
+    --Message { message: "hello world", status: Unseen}
+  ]
+
+
+icon :: State -> Html Action
+icon state =  span [ className "messages" ] [ 
+        link "/messages" [ className "" ] [
+          span [ className "oi oi-envelope-closed", A.title "Messages", aria "hidden" "true" ] []
+        , span [ className "count" ] [ text (show unSeenCount) ] 
+        , span [ className "text" ] [ text "Messages"]
+        ]
+      ]
+  where
+    unSeenCount = length $ filter (\(Message n) -> n.status == UnSeen) state.messages  
+
+
+view :: State -> Html Action
+view state = do
+  div
+    []   
+    [ 
+      h1 [] [ text "Send Message" ]
+      , label [] [ text "To" ]
+      --, input [ type_ "text", value "", maxLength "20", onChange UpdateRecipient, value (intercalate "," $ map toValue state.recipients) ] []
+      , div [ className "fieldGroup" ] [ (multiRecipient state.recipients) ]
+      , textarea [ onChange UpdateTextArea, value state.newMessage ] []
+      , button [ onClick (const SendMessage), className "waves-effect waves-light btn-large"] [ text "Send Message" ]
+      , ul [] ( map renderMessage state.messages )
+      ]
+  where
+    renderMessage :: Message -> Html Action
+    renderMessage (Message m) = li [] [ text m.message ]
+
+toValue :: Int -> String    
+toValue = toStringAs decimal
+
+data Contact = Contact {
+    id_ :: String
+  , name :: String
+  , icon :: Maybe String
+}
+
+contactMap :: StrMap Contact
+contactMap = StrMap.fromFoldable $ map f contacts
+  where
+    f (Contact c) = Tuple c.id_ (Contact c)
+
+
+multiRecipient :: Array Int -> Html Action
+multiRecipient xs = ul [ className "list" ]
+                      (
+                        ( mapWithIndex (\i r -> recipient i (Just r) ) xs )
+                        <> [ recipient ((Array.length xs) + 1) Nothing ] 
+                      ) 
+                      
+  where
+     --recipient i r = input [ type_ "text", value "", maxLength "20", onChange UpdateRecipient, data_ "idx" (toValue i), value (maybe "" toValue r) ] []
+     recipient i r = li [ className "item" ] [
+                       span [ className "input inline" ] [ 
+                          input [ type_ "text", value "", maxLength "20", onChange (UpdateRecipient i), value (maybe "" toValue r), style [ (Tuple "width" "90%") ] ] []
+                        , button [ onClick (const (RemoveRecipient i)), className "oi oi-delete" ] [ text "" ]
+                        ]
+                     {-, div [ className "controls", style [ (Tuple "width" "10%") ]] [
+                         button [ onClick (const (RemoveRecipient i)) ] [ text "Remove" ]
+                       ]-}
+                     ]
+                   
+update :: Action -> State -> State
+update action state = case action of 
+    --SendMessage) (State state) = State state { messages = state.messages <> [ Message { message:state.newMessage, sender:1, recipient:2} ], newMessage = "" }
+    SendMessage -> state { newMessage = "" }
+    UpdateTextArea ev -> state { newMessage = (ev).target.value }
+    UpdateRecipient i ev -> state { recipients = case (fromStringAs decimal ev.target.value) of
+                                                    Just int -> case state.recipients of
+                                                      [] -> [ int ]
+                                                      xs  -> nub $ fromMaybe (state.recipients <> [ int ]) $ Array.updateAt (spy i) int state.recipients
+                                                    Nothing -> state.recipients
+                                  }
+    RemoveRecipient i -> state { recipients = fromMaybe state.recipients $ Array.deleteAt i state.recipients }
+    Nop -> state
+
+{-
+update :: forall e. Action -> State -> EffModel State Action (ajax :: AJAX, console :: CONSOLE, now :: NOW | e)
+update action state = case action of 
+  SendMessage -> { state: state { newMessage = "" }
+                  ,  effects: [ 
+                    do
+                      let message = Message { sender:1, recipient:2, message:state.newMessage, status:UnSeen }
+                      res2 <- affjax $ defaultRequest 
+                                { method = Left POST
+                                --, url = "http://localhost:3000/rpc/send_notification" --"http://localhost:3000/rpc/send_notification"
+                                , url = "http://" <> (state.server).host <> "/rpc/send_notification"
+                                --, content = Just <<< show $ encodeJson message
+                                , content = Just <<< show $ encodeJson $ message
+                                , headers = [ ContentType applicationJSON
+                                            , RequestHeader "Authorization" $ "Bearer " <> (fromMaybe "" (state.auth).jwt)
+                                            --, Accept $ MediaType "*/*"  
+                                            ]
+                                }
+                      liftEff $ log $ "POST /api response: " <> res2.response
+                      pure Nop
+                      
+                  ] }
+  UpdateTextArea ev  -> noEffects $ state { newMessage = (ev).target.value }
+  UpdateRecipient i ev -> state { recipients = case (fromStringAs decimal ev.target.value) of
+                                                  Just int -> case state.recipients of
+                                                    [] -> [ int ]
+                                                    xs  -> nub $ fromMaybe (state.recipients <> [ int ]) $ Array.updateAt (spy i) int state.recipients
+                                                  Nothing -> state.recipients
+                                }
+  RemoveRecipient i -> state { recipients = fromMaybe state.recipients $ Array.deleteAt i state.recipients }                  
+-}
+
+
+
+
+
+{-
+update_ (ChildMessages Messages.SendMessage) state = 
+  { state: state { messages = Messages.update Messages.SendMessage state.messages }
+  , effects: [ 
+    do
+      res <- traverse (send userId (state.messages).newMessage) state.messages.recipients 
+      pure Nop
+
+    ]}
+  where
+    post msg = apiRequest state.server.apiHost "rpc/send_notification" state.auth.jwt $ Just <<< show $ encodeJson msg
+    send s m r = post $ Messages.Message {sender:s, recipient:r, message:m, status:Messages.UnSeen }
+    userId = case state.auth.userProfile of 
+                Just (Authentication.UserProfile u) -> u.uid
+                Nothing -> 1
+
+
+update_ (ChildMessages n) state =
+  noEffects $ state { messages = Messages.update n state.messages }
+-}
